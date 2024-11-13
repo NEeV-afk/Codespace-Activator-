@@ -8,7 +8,7 @@ from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
 # Replace with your Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "7650574571:AAGCzVUy1fWxEIi48-EQZEZRK-IDYu0PVI0"
+TELEGRAM_BOT_TOKEN = "7650574571:AAHxFf8TMaVf41Yg3_dE7aaN7nGP-yaQOHE"
 # Replace with the channel ID (e.g., -1001234567890)
 CHANNEL_ID = "-1002497737475"
 
