@@ -22,6 +22,8 @@ tokens_collection = db['user_tokens']
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
+app = Flask('')
+
 @app.route('/')
 def home():
     return "I am alive"
