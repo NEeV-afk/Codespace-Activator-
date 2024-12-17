@@ -6,32 +6,11 @@ import logging
 import time
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
-
+from flask import Flask 
 # Replace with your Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "7650574571:AAHxFf8TMaVf41Yg3_dE7aaN7nGP-yaQOHE"
+TELEGRAM_BOT_TOKEN = "7650574571:AAGfAHAFGPz1IxGhGpssv_NopIEHqN5Pca0"
 # Replace with the channel ID (e.g., -1001234567890)
 CHANNEL_ID = "-1002497737475"
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "I am alive"
-
-def run_flask():
-    try:
-        app.run(host='0.0.0.0', port=8085)
-    except Exception as e:
-        logging.error(f"Error in Flask server: {e}")
-
-def keep_alive():
-    t = threading.Thread(target=run_flask)
-    t.start()
-
-def main():
-    try:
-        # Start the keep-alive server
-        keep_alive()
 
 # Replace with your MongoDB URL
 MONGO_URL = "mongodb+srv://botplays:botplays@vulpix.ffdea.mongodb.net/?retryWrites=true&w=majority&appName=Vulpix"
@@ -43,6 +22,17 @@ tokens_collection = db['user_tokens']
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
+@app.route('/')
+def home():
+    return "I am alive"
+
+def run_http_server():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_http_server)
+    t.start()
+    
 # Function to load tokens from MongoDB
 def load_tokens(chat_id):
     try:
@@ -129,11 +119,12 @@ def stop_codespace(github_token, codespace_name):
 @bot.message_handler(commands=['start'])
 def welcome(message):
     chat_id = message.chat.id
-    # Create an inline keyboard
+
+# Create an inline keyboard
     markup = types.InlineKeyboardMarkup()
 
     # Add "Owner" button
-    owner_button = types.InlineKeyboardButton(text="Owner", url="https://t.me/botplays90")
+    owner_button = types.InlineKeyboardButton(text="🗿Owner🗿", url="https://t.me/botplays90")
     markup.add(owner_button)
 
     # Add "Add Token" button
@@ -148,7 +139,7 @@ def welcome(message):
     delete_token_button = types.InlineKeyboardButton(text="Delete Token", callback_data="delete_token")
     markup.add(delete_token_button)
 
-    bot.reply_to(message, "Welcome! Please add your GitHub Personal Access Token (PAT) to check your codespaces or reach out to the bot owner.", reply_markup=markup)
+    bot.reply_to(message, "Welcome Buddy 😄! Add Your GitHub Personal Access Token By Clicking On Add Token Button ✅.", reply_markup=markup)
 
 # Handler for adding a token
 @bot.callback_query_handler(func=lambda call: call.data == "add_token")
@@ -188,7 +179,8 @@ def update_codespaces(message, github_token):
             name = codespace['name']
             state = codespace['state']
             status_text = "🟢 Active" if state == "Available" else "🔴 Inactive"
-            button = types.InlineKeyboardButton(text=f"{name} {status_text}", callback_data=f"toggle_{name}")
+            # Show status first, then name
+            button = types.InlineKeyboardButton(text=f"({status_text}) {name}", callback_data=f"toggle_{name}")
             markup.add(button)
 
         bot.reply_to(message, "Here are your Codespaces:", reply_markup=markup)
@@ -210,7 +202,24 @@ def show_tokens(call):
 
     markup.add(types.InlineKeyboardButton(text="Add another Token", callback_data="add_token"))
 
-    bot.send_message(chat_id, "Here are your tokens:", reply_markup=markup)
+    bot.send_message(chat_id, "Here are your tokens. Select a token to view Codespaces:", reply_markup=markup)
+
+# Callback handler for selecting a token to load Codespaces
+@bot.callback_query_handler(func=lambda call: call.data.startswith("select_token_"))
+def handle_selected_token(call):
+    token_index = int(call.data.split("_")[-1])
+    chat_id = call.message.chat.id
+    tokens = load_tokens(chat_id)
+
+    if not tokens or token_index >= len(tokens):
+        bot.send_message(chat_id, "Token not found. Please try again.")
+        return
+
+    github_token = tokens[token_index]
+    bot.answer_callback_query(call.id, "Loading Codespaces...")
+
+    # Fetch and display the Codespaces for the selected token
+    update_codespaces(call.message, github_token)
 
 # Callback handler to delete a token
 @bot.callback_query_handler(func=lambda call: call.data == "delete_token")
@@ -238,7 +247,7 @@ def confirm_delete_token(call):
     delete_token(chat_id, token_index)
     bot.send_message(chat_id, f"Token {token_index + 1} has been deleted.")
 
-# Callback handler for toggling codespaces
+# Callback handler for toggling codespaces and updating button status
 @bot.callback_query_handler(func=lambda call: call.data.startswith("toggle_"))
 def handle_toggle_codespace(call):
     codespace_name = call.data.split("_", 1)[1]
@@ -250,29 +259,49 @@ def handle_toggle_codespace(call):
         return
 
     github_token = tokens[-1]  # Use the latest token
-    bot.answer_callback_query(call.id, "Attempting to toggle the Codespace...")
+    bot.answer_callback_query(call.id, "Toggling the Codespace...")
 
+    # Fetch the latest status of Codespaces
     codespaces = get_codespaces_list(github_token)
     selected_codespace = next((c for c in codespaces if c["name"] == codespace_name), None)
 
     if not selected_codespace:
-        bot.reply_to(call.message, "Failed to find the Codespace.")
+        bot.send_message(chat_id, "Failed to find the Codespace.")
         return
 
+    # Check current state and attempt to toggle
     if selected_codespace["state"] == "Available":
         if stop_codespace(github_token, codespace_name):
-            bot.reply_to(call.message, f"Stopped Codespace: {codespace_name}.")
+            new_state = "🔴 Inactive"
         else:
-            bot.reply_to(call.message, "Failed to stop the Codespace.")
+            bot.send_message(chat_id, "Failed to stop the Codespace.")
+            return
     else:
         if activate_codespace(github_token, codespace_name):
-            bot.reply_to(call.message, f"Started Codespace: {codespace_name}.")
+            new_state = "🟢 Active"
         else:
-            bot.reply_to(call.message, "Failed to start the Codespace.")
+            bot.send_message(chat_id, "Failed to start the Codespace.")
+            return
 
-bot.polling(none_stop=True, timeout=60)
-    except Exception as e:
-        logging.error(f"Error in main bot polling loop: {e}")
-        # Retry the bot polling to ensure it keeps running
-        time.sleep(5)
-        main()
+    # Update the inline button with the new state
+    markup = types.InlineKeyboardMarkup()
+    button = types.InlineKeyboardButton(text=f"({new_state}) {codespace_name}", callback_data=f"toggle_{codespace_name}")
+    markup.add(button)
+
+    # Edit the message text with the updated button
+    bot.edit_message_text(
+        text=f"Here are your Codespaces:\n\n{new_state} {codespace_name}",  # Update message with current state
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        reply_markup=markup)
+
+if __name__ == "__main__":
+    keep_alive()
+    
+    while True:
+        try:
+            bot.polling(none_stop=True)
+        except Exception as e:
+            print(f"Error occurred: {str(e)}")
+            time.sleep(5)
+        
